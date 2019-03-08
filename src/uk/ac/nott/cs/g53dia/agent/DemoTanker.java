@@ -122,17 +122,18 @@ public class DemoTanker extends Tanker {
 			}else if(goal.name.equals(EXECUTE_GOAL_DISPOSE_WASTE)) {
 				return new DisposeWasteAction();
 			}
-			//System.out.println("GoalName: "+goal.name+ "TowardsX: "+goal.coords.x+ "TowardsY: "+goal.coords.y);
+			System.out.println("GoalName: "+goal.name+ "TowardsX: "+goal.coords.x+ "TowardsY: "+goal.coords.y);
 			currStepCount++;
-			return new MoveTowardsAction(goal.point);
-			//return aMoveAction(goal, view);
+			//return new MoveTowardsAction(goal.point);
+			return aMoveAction(goal, view);
+			//return aMoveAction(new Goal(null, null, "Wander"), view);
 		}
 
 
 		//wander if no goal
 		currStepCount++;
-		return new MoveAction(direction);
-		//return aMoveAction(new Goal(null, null, "Wander"), view);
+		//return new MoveAction(direction);
+		return aMoveAction(new Goal(null, null, "Wander"), view);
 	}
 
 	public LoadWasteAction loadWasteAction(Cell[][]view) {
@@ -146,48 +147,63 @@ public class DemoTanker extends Tanker {
 	public Goal formulateGoal(Cell[][]view) {
 		Goal goal = null; Coords nearestPump;
 
+		//System.out.println("2xstepCount"+(2*currStepCount)+"fuelCapacity"+(getFuelLevel()-2));
 		//FUEL CHECK
 		Coords currentCoords= currentCoords(view);
-		//if(this.getFuelLevel() <= fuelThreshold && !(getCurrentCell(view) instanceof FuelPump ))  {//check for sufficient fuel
-		if(currStepCount*2 >= this.getFuelLevel()-3 && !(getCurrentCell(view) instanceof FuelPump)) {
-			nearestPump = nearestPumporWell(allPumpsMap);
-			if(nearestPump == null) {
-				System.out.println("FUELpumpLOC!: "+FUEL_PUMP_LOCATION.toString());
-				return new Goal(FUEL_PUMP_LOCATION,new Coords(0,0, FUEL_PUMP_LOCATION,Math.max(currentCoords.x, currentCoords.y),FuelPump.class.getName()), MOVE_DIR_REFUEL);
-			}
-			if(Math.max(currentCoords.x, currentCoords.y)<Math.max(nearestPump.x-currentCoords.x, nearestPump.y-currentCoords.y)) {//distance back to main fuel pump vs distance to new pump
-				return new Goal(FUEL_PUMP_LOCATION,nearestPump,MOVE_DIR_REFUEL);
+		int tankerX = currentCoords.x-20+tanker_xDist; 
+		int tankerY = 20-currentCoords.y+tanker_yDist;
+		int nearestFuelpumpDist = 0; Boolean defaultPump = false;
+		
+		//recalculate distance to nearest fuelpump
+		nearestPump = nearestPumporWell(allPumpsMap, view);
+		if(nearestPump == null || 
+				Math.max(Math.abs(tankerX),Math.abs(tankerY))<Math.max(Math.abs(nearestPump.x-tankerX), Math.abs(nearestPump.y-tankerY))) {//no near pump or nearest pump too far set to dewfault pump
+			nearestFuelpumpDist = Math.max(tankerX, tankerY);
+			defaultPump = true;
+		}else {
+			nearestFuelpumpDist = Math.max(Math.abs(nearestPump.x - tankerX), Math.abs(nearestPump.y - tankerY));
+			defaultPump = false;
+		}
+		System.out.println(" nearest pump:"+nearestFuelpumpDist*2+ "this fuelminusf"+(this.getFuelLevel()-4));
+
+		//if(this.getFuelLevel()-4 <= 2*currStepCount && !(getCurrentCell(view) instanceof FuelPump)) {
+		if(this.getFuelLevel()-4 <= nearestFuelpumpDist*2 && !(getCurrentCell(view) instanceof FuelPump)) {	
+			System.out.println("going back for fuel");
+			if(defaultPump) {
+				return new Goal(FUEL_PUMP_LOCATION, new Coords(0,0, FUEL_PUMP_LOCATION,Math.max(tankerX, tankerY), FuelPump.class.getName()), MOVE_DIR_REFUEL);
 			}else {
-				return new Goal(nearestPump.point,nearestPump,MOVE_DIR_REFUEL);
+				return new Goal(nearestPump.point, nearestPump, MOVE_DIR_REFUEL);
 			}
 		}
+		
 		if(getCurrentCell(view) instanceof FuelPump && this.getFuelLevel()<this.fuelThreshold) {
 			direction = (direction+1) %8;
 			if(stationTask) {sameStationTask++;} //DEAL WITH SAME STATION MULTIPLE ATTEMPTS
 			return new Goal(getCurrentCell(view).getPoint(),null, EXECUTE_GOAL_REFUEL);
 		}
-
+		//End of fuel check
 		
-		if(attemptswithCurrentFuelCap>=5) {
-			System.out.println("More than 5 attempts to find stations with right amount of waste for current capacity");
+		if(attemptswithCurrentFuelCap>=3) {
+			System.out.println("More than 3 attempts to find stations with right amount of waste for current capacity");
 			stationTask = false;
 			wellTask = true;
 			attemptswithCurrentFuelCap = 0;
 		}
-		if(sameStationTask >=5) {
+		if(sameStationTask >=3) {
 			System.out.println("same station make changes");
-			//stationTask = false;
-			Coords replacementSt = findActiveStations(allStationsMap, view);
-			while(replacementSt==(activeStation)) {
-				replacementSt = findActiveStations(allStationsMap, view);
-			}
-			activeStation = replacementSt;
-			//??//sameStationTask = 0;
-			//direction = (direction+1) %8;
+			stationTask = false;
+//			Coords replacementSt = findActiveStations(allStationsMap, view);
+//			while(replacementSt==(activeStation)) {
+//				replacementSt = findActiveStations(allStationsMap, view);
+//				//gets stuck here
+//			}
+//			activeStation = replacementSt;
+			sameStationTask = 0;
+//			//direction = (direction+1) %8;
 		}
 		
 		//WASTE CAPACITY CHECK
-		wellFound = nearestPumporWell(allWellsMap);
+		wellFound = nearestPumporWell(allWellsMap, view);
 		if((this.getWasteLevel()>=wasteThreshold || wellTask==true) && !(getCurrentCell(view)instanceof Well)) {
 			//at full waste capacity search for well
 			if(this.getWasteLevel()>=wasteThreshold ) {System.out.println("waste threshold reached!"+wasteThreshold);}
@@ -210,7 +226,8 @@ public class DemoTanker extends Tanker {
 			Coords tempStation= findActiveStations(allStationsMap, view);
 			if(tempStation!=null) {
 				//compare new station and old station and go to whichever is closer
-				if(tempStation.distance<activeStation.distance) {
+				if((Math.max(Math.abs(tempStation.x-tanker_xDist),Math.abs(tempStation.y - tanker_yDist)))<
+					Math.max(Math.abs(activeStation.x- tanker_xDist),Math.abs(activeStation.y - tanker_yDist)))	{
 					System.out.println("swap station!");
 					activeStation = tempStation;
 				}
@@ -220,7 +237,7 @@ public class DemoTanker extends Tanker {
 		//Station bound: to complete a task if available
 		activeStation = findActiveStations(allStationsMap, view);//(allStationsMap, view);
 		if(activeStation!=null && !(getCurrentCell(view)instanceof Station)) {//check for nearby station with task and set as goal
-			System.out.println("FOUND active STATION!!!"+ activeStation.x+"y:"+activeStation.y);
+			System.out.println("FOUND active STATION!!!!!!!!!!!!!!!!!!!"+ activeStation.x+"y:"+activeStation.y);
 			stationTask = true;
 			return new Goal(activeStation.point,activeStation, MOVE_DIR_STATION);
 		}
@@ -245,22 +262,36 @@ public class DemoTanker extends Tanker {
 		//Updates the state for the immediate environment, storing all utilities found. Also stores utilities seen preiviously in their unique hashmaps so 
 		//the agent can thus build up on its perceived environment
 		Coords currCoords = currentCoords(view);
-		stationHashId=0; wellHashId=0; pumpHashId=0; //xyDisp[0], xyDisp[1]
+		//stationHashId=0; wellHashId=0; pumpHashId=0; 
+		int id=0; //xyDisp[0], xyDisp[1]
 
+		
 		for(int i=0; i<view.length; i++) {
 			for(int j=0; j<view.length; j++) {
-				System.out.println("something:"+ view[i][j].getPoint().toString()+"my i:"+i+"j:"+j);
 				int[] xyDisp = new int[2];
-				xyDisp = xyDisplacement(currCoords.x, currCoords.y, i, j);
-				immediateMap.put(i, new Coords(i,j,view[i][j].getPoint(), Math.max(xyDisp[0], xyDisp[1]),view[i][j].getClass().getName() ));//can use same key as immediateMap will be re-written each time updateState is called
+				int x= i-20+tanker_xDist; int y = 20-j+tanker_yDist;
+				xyDisp = xyDisplacement(tanker_xDist, tanker_yDist, x, y);
+				//System.out.println("something:"+ view[i][j].getPoint().toString()+"my i:"+i+"j:"+j+"proppointi="+x+"proppoin"+y);
+				immediateMap.put(id, new Coords(x,y,view[i][j].getPoint(), Math.max(xyDisp[0], xyDisp[1]),view[i][j].getClass().getName() ));//can use same key as immediateMap will be re-written each time updateState is called
+				id++;
 				if(view[i][j].getClass()==(Station.class)) {//store station location in it's hashmap if found
-					allStationsMap.put( stationHashId, new Coords(i,j,view[i][j].getPoint(),Math.max(i-currCoords.x, j-currCoords.x), Station.class.getName()) );
+					Coords newUtility = new Coords(x,y,view[i][j].getPoint(),Math.max(xyDisp[0], xyDisp[1]), Station.class.getName());
+					if(!isUtilitySavedAlready(newUtility, allStationsMap)) {
+						allStationsMap.put( stationHashId, newUtility ) ;
+						stationHashId++;
+					}
 				}else if(view[i][j].getClass().equals(Well.class)){//store well location in it's hashmap if found
-					allWellsMap.put( wellHashId, new Coords(i,j,view[i][j].getPoint(),Math.max(i-currCoords.x, j-currCoords.x), Well.class.getName()) );
-					wellHashId++;
+					Coords newUtility = new Coords(x,y,view[i][j].getPoint(),Math.max(xyDisp[0], xyDisp[1]), Well.class.getName());
+					if(!isUtilitySavedAlready(newUtility, allWellsMap)) {
+						allWellsMap.put( wellHashId, newUtility );
+						wellHashId++;
+					}
 				}else if(view[i][j].getClass().equals(FuelPump.class)) {//store pump location in it's hashmap if found
-					allPumpsMap.put( pumpHashId, new Coords(i,j,view[i][j].getPoint(),Math.max(i-currCoords.x, j-currCoords.x), FuelPump.class.getName()) );
-					pumpHashId++;
+					Coords newUtility = new Coords(x,y,view[i][j].getPoint(),Math.max(xyDisp[0], xyDisp[1]), FuelPump.class.getName());
+					if(!isUtilitySavedAlready(newUtility, allPumpsMap)) {
+						allPumpsMap.put( pumpHashId, newUtility);
+						pumpHashId++;
+					}
 				}
 			}
 
@@ -269,14 +300,28 @@ public class DemoTanker extends Tanker {
 		return;
 	}
 
-	public Coords nearestPumporWell (HashMap<Integer, Coords> utilityMap) {
+	public Boolean isUtilitySavedAlready (Coords newUtility, HashMap<Integer, Coords> utilityMap) {
+		
+		for(Map.Entry<Integer,Coords> entry: utilityMap.entrySet()) {
+			Coords utility = entry.getValue();
+			if(utility.point.equals(newUtility.point)) {
+				return true;
+			}
+		}
+		return false;
+		
+	}
+	public Coords nearestPumporWell (HashMap<Integer, Coords> utilityMap, Cell[][]view) {
 		Coords utilityCoords;
 		int minDistance=30000; //
 		int minDistKey = -1;
+		Coords tankerCoords = currentCoords(view);
+		int tankerX = tankerCoords.x-20+tanker_xDist; 
+		int tankerY = 20-tankerCoords.y+tanker_yDist;
 		for(Map.Entry<Integer, Coords> entry:utilityMap.entrySet()) {
 			Coords utility = entry.getValue();
 			int key = entry.getKey();
-			int dist = utility.distance;
+			int dist = Math.max(Math.abs(utility.y-tankerY), Math.abs(utility.x-tankerX));
 			if(dist<minDistance) {
 				minDistKey =key;
 				minDistance = dist;
@@ -291,7 +336,10 @@ public class DemoTanker extends Tanker {
 
 	public Coords findActiveStations(HashMap<Integer, Coords> stationsMap, Cell[][]view){
 		int count = 0;
-		int minDistance = 30000; 
+		int minDistance =30000; 
+		Coords tankerCoords = currentCoords(view);
+		int tankerX = tankerCoords.x-20+tanker_xDist; 
+		int tankerY = 20-tankerCoords.y+tanker_yDist;
 		Coords stCoords = null;
 		Station st = null;
 		Task task = null;
@@ -301,7 +349,7 @@ public class DemoTanker extends Tanker {
 			Coords stationCoords = entry.getValue();
 			if(stationCoords.name.equals(Station.class.getName())) {
 				try{
-					st =  (Station)view[stationCoords.x][stationCoords.y];
+					st =  (Station)view[stationCoords.x+20-tanker_xDist][-(stationCoords.y-20-tanker_yDist)];
 					task = st.getTask();
 				}catch(Exception e) {
 					continue;
@@ -317,7 +365,7 @@ public class DemoTanker extends Tanker {
 			//we found 'active' stations with tasks now to find the closest to the agent.
 			for(Map.Entry<Integer, Coords> entry:activeStations.entrySet()) {
 				Coords stationActive = entry.getValue();
-				int dist = stationActive.distance;
+				int dist = Math.max(Math.abs(stationActive.y-tankerY), Math.abs(stationActive.x-tankerX));
 				if(dist<minDistance) {
 					minDistance = dist;
 					stCoords = entry.getValue();
@@ -330,7 +378,7 @@ public class DemoTanker extends Tanker {
 	}
 
 	public Coords currentCoords(Cell[][]view) {
-		//Returns an object of the current coordinates of the agent relative to its immediate environment
+		//Returns the current coordinates of the agent
 		Coords agentCoords = null;
 
 		for(int i=0; i<view.length; i++) {
@@ -432,48 +480,48 @@ public class DemoTanker extends Tanker {
 			else if(direction==6) {tanker_xDist++; tanker_yDist--;}
 			else if(direction==7) {tanker_xDist--; tanker_yDist--;}
 			tankerDist++;
-			//System.out.println("tankDist:"+ tankerDist+" xdist:"+tanker_xDist+" yDist: "+tanker_yDist);
 			return new MoveAction(direction);
 		}
 
 		int currX = tanker_xDist;//currentCoords(view).x;
 		int currY = tanker_yDist;//currentCoords(view).y;
 		int dir = 0;
-		int targetX = g.coords.x; 
-		int targetY = g.coords.y;
+		int targetX = g.coords.x;//g.coords.x-20+tanker_xDist;
+		int targetY = g.coords.y;//20-g.coords.y+tanker_yDist;
 		System.out.println("Destination:"+g.name+" " +"x: "+g.coords.x+"y:"+g.coords.y);
 		int dx = targetX - currX;
 		int dy = targetY - currY;
 
 		if(dx>0 && dy>0) {
 			targetX++; targetY++; tanker_xDist++; tanker_yDist++;
-			dir= NORTHEAST;
+			return new MoveAction(NORTHEAST);
 		}else if(dx<0 && dy>0) {
 			targetX--; targetY++; tanker_xDist--; tanker_yDist++;
-			dir = NORTHWEST;
+			return new MoveAction(NORTHWEST);
 		}else if(dx>0 && dy<0) {
 			targetX++; targetY--; tanker_xDist++; tanker_yDist--;
-			dir = SOUTHEAST;
+			return new MoveAction(SOUTHEAST);
 		}else if(dx<0 && dy<0) {
 			targetX--; targetY--; tanker_xDist--; tanker_yDist--;
-			dir= SOUTHWEST;
+			return new MoveAction(SOUTHWEST);
 		}
+		
 		if (dx < 0) {
 			tanker_xDist--;
-			dir =WEST;
+			return new MoveAction(WEST);
 		} else if (dx > 0) {
 			tanker_xDist++;
-			dir=EAST;
+			return new MoveAction(EAST);
 		}
 		if (dy < 0) {
 			tanker_yDist--;
-			dir=SOUTH;
+			return new MoveAction(SOUTH);
 		} else if (dy > 0) {
 			tanker_yDist++;
-			dir=NORTH;
+			return new MoveAction(NORTH);
 		}
 		tankerDist = Math.max(tanker_xDist, tanker_yDist);
-		System.out.println("tankDist:"+ tankerDist+" xdist:"+tanker_xDist+" yDist: "+tanker_yDist);
+		//System.out.println("tankDist:"+ tankerDist+" xdist:"+tanker_xDist+" yDist: "+tanker_yDist);
 
 		return new MoveAction(dir);
 	}
