@@ -44,9 +44,9 @@ public class Simulator {
 	public static void main(String[] args) {
 		// Note: to obtain reproducible behaviour, you can set the Random seed
 		//Random r = new Random();
-		for(int i=1; i<11;i++) {
+		//for(int i=1; i<11;i++) {
 			Random r = new Random();
-			r.setSeed(10*i);
+			r.setSeed(100);//(10*i);
 			// Create an environment
 			Environment env = new Environment(Tanker.MAX_FUEL/2, r);
 			// Create a tanker
@@ -80,6 +80,6 @@ public class Simulator {
 				}
 			}
 			System.out.println("Simulation completed at timestep " + env.getTimestep() + " , score: " + tank.getScore());
-		}
+		//}
 	}
 }

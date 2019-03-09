@@ -64,18 +64,11 @@ public class DemoTanker extends Tanker {
 			this.coords = coords;
 		}
 	}
-	HashMap <Integer,Coords> immediateMap = new HashMap<>();//stores the agents currently viewed percepts and it's own location
 	HashMap <Integer,Coords> allStationsMap = new HashMap<>();
 	HashMap <Integer,Coords> allWellsMap = new HashMap<>();
 	HashMap <Integer,Coords> allPumpsMap = new HashMap<>();
 
-	HashMap<Coords, String> utilityMap;
-	int agentDistanceFromOrigin=0; int direction =0;
-	/*
-	 * The following is a simple demonstration of how to write a tanker. The
-	 * code below is very stupid and simply moves the tanker randomly until the
-	 * fuel tank is half full, at which point it returns to a fuel pump.
-	 */
+	int direction =0;
 	Boolean goalSet = false; Coords goalCoords= null; String goalClass= null; Boolean gotFuel = false; Point nearestUtilityPoint;
 	Boolean resetVars = false;
 	Boolean arrived = null;
@@ -85,31 +78,20 @@ public class DemoTanker extends Tanker {
 	Coords activeStation = null; Coords wellFound = null; int sameStationTask=0;
 	int stationHashId=0, wellHashId=0, pumpHashId=0;
 	double fuelThreshold; double wasteThreshold;
-	PriorityQueue<String> pQueue =new PriorityQueue<String>();
 	static final String EXECUTE_GOAL_REFUEL = "Action_Refuel";
 	static final String MOVE_DIR_REFUEL = "MoveTowards_Refuel";
 	static final String MOVE_DIR_STATION = "MoveTowards_Station";
 	static final String MOVE_DIR_WELL = "MoveTowards_Well";
 	static final String EXECUTE_GOAL_LOAD_WASTE = "Action_getWasteTask";
 	static final String EXECUTE_GOAL_DISPOSE_WASTE = "Action_disposeWaste";
-
+	
 	int tankerDist=0; int tanker_xDist=0; int tanker_yDist=0;
 	int attemptswithCurrentFuelCap=0;
+	
 	public Action senseAndAct(Cell[][] view, boolean actionFailed, long timestep) {
-		fuelThreshold = MAX_FUEL *50.0 / 100.0; // minimum fuel level before refuel in %60 was good
-		wasteThreshold = MAX_WASTE * 80.0/100.0; //max waste level before need for disposing waste
+		wasteThreshold = MAX_WASTE * 70.0/100.0; //max waste level before need for disposing waste
 		
 		updateState(view); //update the agent's map of the environment
-
-		if(pQueue.isEmpty()) {
-			//Do some initialisation
-			pQueue.add("Wander");
-			pQueue.add("Pickup");
-			pQueue.add("Well");
-			pQueue.add("Refuel");
-		}
-
-		//  System.out.println("!!!!!!!!!!!!!tankerXDIST:"+ tanker_xDist+" "+ "tankeryDisy: " + tanker_yDist);
 
 		Goal goal = formulateGoal(view);
 
@@ -176,7 +158,7 @@ public class DemoTanker extends Tanker {
 			}
 		}
 		
-		if(getCurrentCell(view) instanceof FuelPump && this.getFuelLevel()<this.fuelThreshold) {
+		if(getCurrentCell(view) instanceof FuelPump && this.getFuelLevel()<this.MAX_FUEL) {
 			direction = (direction+1) %8;
 			if(stationTask) {sameStationTask++;} //DEAL WITH SAME STATION MULTIPLE ATTEMPTS
 			return new Goal(getCurrentCell(view).getPoint(),null, EXECUTE_GOAL_REFUEL);
@@ -192,14 +174,8 @@ public class DemoTanker extends Tanker {
 		if(sameStationTask >=3) {
 			System.out.println("same station make changes");
 			stationTask = false;
-//			Coords replacementSt = findActiveStations(allStationsMap, view);
-//			while(replacementSt==(activeStation)) {
-//				replacementSt = findActiveStations(allStationsMap, view);
-//				//gets stuck here
-//			}
-//			activeStation = replacementSt;
+			direction = (direction+1) %8;//new trying to get it to stop hovering
 			sameStationTask = 0;
-//			//direction = (direction+1) %8;
 		}
 		
 		//WASTE CAPACITY CHECK
@@ -223,31 +199,42 @@ public class DemoTanker extends Tanker {
 		if(stationTask == true && activeStation!=null && !(getCurrentCell(view) instanceof Station )) {
 			//task to complete
 			System.out.println("INCOMPLETE STATION TASK!!!!!!!!!!!!!!");
-			Coords tempStation= findActiveStations(allStationsMap, view);
+			Coords tempStation= findActiveStations(allStationsMap, view);//will return nearest currently seen active station
 			if(tempStation!=null) {
-				//compare new station and old station and go to whichever is closer
-				if((Math.max(Math.abs(tempStation.x-tanker_xDist),Math.abs(tempStation.y - tanker_yDist)))<
-					Math.max(Math.abs(activeStation.x- tanker_xDist),Math.abs(activeStation.y - tanker_yDist)))	{
-					System.out.println("swap station!");
+				if(distanceToUtility(tempStation, view)<distanceToUtility(activeStation, view)) {
+					System.out.println("Swap station");
 					activeStation = tempStation;
-				}
+				}	
+				Station st =  (Station)view[activeStation.x+20-tanker_xDist][-(activeStation.y-20-tanker_yDist)];
+				if(st.getTask().getWasteRemaining()>this.getWasteCapacity() && wellFound!=null) {
+					wellTask = true; stationTask = false;
+					return new Goal(wellFound.point, wellFound, MOVE_DIR_WELL);
+				}else {wellTask = false;}
 			}
 			return new Goal(activeStation.point,activeStation, MOVE_DIR_STATION);
 		}
-		//Station bound: to complete a task if available
-		activeStation = findActiveStations(allStationsMap, view);//(allStationsMap, view);
+		//needs new task 
+		activeStation = findActiveStations(allStationsMap, view);//find nearest station we can currently see
 		if(activeStation!=null && !(getCurrentCell(view)instanceof Station)) {//check for nearby station with task and set as goal
 			System.out.println("FOUND active STATION!!!!!!!!!!!!!!!!!!!"+ activeStation.x+"y:"+activeStation.y);
 			stationTask = true;
+			
+			Station st =  (Station)view[activeStation.x+20-tanker_xDist][-(activeStation.y-20-tanker_yDist)];
+			if(st.getTask().getWasteRemaining()>this.getWasteCapacity() && wellFound!=null) {
+				wellTask = true; stationTask = false;
+				return new Goal(wellFound.point, wellFound, MOVE_DIR_WELL);
+			}else {wellTask = false;}
+			
 			return new Goal(activeStation.point,activeStation, MOVE_DIR_STATION);
 		}
 		if(getCurrentCell(view) instanceof Station ) {
 			direction = (direction+1) %8;
 			Station st = (Station)getCurrentCell(view);
-			if(st.getTask()!=null && st.getTask().getWasteRemaining()<this.getWasteCapacity()) {
+			if(st.getTask()!=null) { //&& st.getTask().getWasteRemaining()<this.getWasteCapacity()) {
 				stationTask = false; activeStation = null;
 				attemptswithCurrentFuelCap=0;
 				sameStationTask=0;
+				System.out.println("LOADING WASTE" );
 				return new Goal(getCurrentCell(view).getPoint(),null,EXECUTE_GOAL_LOAD_WASTE);
 			}else if(st.getTask()!=null && st.getTask().getWasteRemaining()>this.getWasteCapacity()) {
 				System.out.println("too much waste here");
@@ -258,27 +245,33 @@ public class DemoTanker extends Tanker {
 
 		return goal;
 	}
+	
+	public int distanceToUtility(Coords utility, Cell[][]view) {
+		Coords currentCoords= currentCoords(view);
+		int tankerX = currentCoords.x-20+tanker_xDist; 
+		int tankerY = 20-currentCoords.y+tanker_yDist;
+		int distance = Math.max(Math.abs(utility.x-tankerX), Math.abs(utility.y-tankerY));
+		return distance;
+	}
+	
 	public void updateState(Cell[][]view) {
 		//Updates the state for the immediate environment, storing all utilities found. Also stores utilities seen preiviously in their unique hashmaps so 
 		//the agent can thus build up on its perceived environment
 		Coords currCoords = currentCoords(view);
-		//stationHashId=0; wellHashId=0; pumpHashId=0; 
-		int id=0; //xyDisp[0], xyDisp[1]
-
-		
+				
 		for(int i=0; i<view.length; i++) {
 			for(int j=0; j<view.length; j++) {
 				int[] xyDisp = new int[2];
 				int x= i-20+tanker_xDist; int y = 20-j+tanker_yDist;
 				xyDisp = xyDisplacement(tanker_xDist, tanker_yDist, x, y);
-				//System.out.println("something:"+ view[i][j].getPoint().toString()+"my i:"+i+"j:"+j+"proppointi="+x+"proppoin"+y);
-				immediateMap.put(id, new Coords(x,y,view[i][j].getPoint(), Math.max(xyDisp[0], xyDisp[1]),view[i][j].getClass().getName() ));//can use same key as immediateMap will be re-written each time updateState is called
-				id++;
 				if(view[i][j].getClass()==(Station.class)) {//store station location in it's hashmap if found
 					Coords newUtility = new Coords(x,y,view[i][j].getPoint(),Math.max(xyDisp[0], xyDisp[1]), Station.class.getName());
 					if(!isUtilitySavedAlready(newUtility, allStationsMap)) {
 						allStationsMap.put( stationHashId, newUtility ) ;
 						stationHashId++;
+					}else {
+						//update station and thus task
+						updateStationUtility(newUtility, allStationsMap);
 					}
 				}else if(view[i][j].getClass().equals(Well.class)){//store well location in it's hashmap if found
 					Coords newUtility = new Coords(x,y,view[i][j].getPoint(),Math.max(xyDisp[0], xyDisp[1]), Well.class.getName());
@@ -300,8 +293,18 @@ public class DemoTanker extends Tanker {
 		return;
 	}
 
+	
+	public void updateStationUtility(Coords newUtility, HashMap<Integer, Coords>utilityMap) {
+		//find and update station utility ; useful if say a station now has a task
+		for(Map.Entry<Integer,Coords> entry: utilityMap.entrySet()) {
+			Coords utility = entry.getValue();
+			int key = entry.getKey();
+			if(utility.point.equals(newUtility.point)) {
+				utilityMap.replace(key, utility);
+			}
+		}
+	}
 	public Boolean isUtilitySavedAlready (Coords newUtility, HashMap<Integer, Coords> utilityMap) {
-		
 		for(Map.Entry<Integer,Coords> entry: utilityMap.entrySet()) {
 			Coords utility = entry.getValue();
 			if(utility.point.equals(newUtility.point)) {
